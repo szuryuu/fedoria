@@ -53,3 +53,7 @@ The script deliberately excludes MPD runtime files (`socket`, log, database, and
 ├── spicetify/    # Spotify theme and marketplace settings
 └── sync-file.sh  # Sync ~/.config into this repository
 ```
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
