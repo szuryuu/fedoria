@@ -1,0 +1,137 @@
+#!/bin/sh
+# =============================================================
+# Author:  gh0stzk
+# Repo:    https://github.com/gh0stzk/dotfiles
+# Date:    07.07.2026
+#
+# Weather - Weather Monitor for Polybar/Eww
+# Features:
+#   ✔ Obtaining data in real time via API
+#   ✔ Support for Celsius and Fahrenheit formats
+#   ✔ Handling of errors, invalid responses and connection failures
+#
+# Dependencies:
+#   → Core: jq, curl
+#   → Optionals: Polybar, Eww
+#
+# Copyright (C) 2021-2026 gh0stzk <z0mbi3.zk@protonmail.com>
+# Licensed under GPL-3.0 license
+# =============================================================
+
+# ===== Configuration =====
+KEY="8b05d62206f459e1d298cbe5844d7d87"
+CITY="Mexico City"  # Go to https://openweathermap.org/find to find your city/town
+UNITS="metric" # metric | imperial
+
+MAX_WAIT=10  # seconds
+# Wait for internet
+wait_for_internet() {
+    waited=0
+    while ! curl -fsS --max-time 2 https://google.com >/dev/null 2>&1; do
+        [ "$waited" -ge "$MAX_WAIT" ] && return 1
+        sleep 1
+        waited=$((waited + 1))
+    done
+}
+
+fetch_weather_data() {
+    encoded_city=$(printf "%s" "$CITY" | sed 's/ /%20/g')
+    url="https://api.openweathermap.org/data/2.5/weather?q=$encoded_city&appid=$KEY&units=$UNITS"
+
+    curl -fsS --max-time 5 "$url"
+}
+
+get_weather_data() {
+    wait_for_internet || return 1
+    data=$(fetch_weather_data) || return 1
+
+    cod=$(printf '%s' "$data" | jq -r '.cod // empty' 2>/dev/null)
+    [ "$cod" = "200" ] || return 1
+
+    printf '%s' "$data"
+}
+
+# Parse all fields in a single jq call
+parse_weather_values() {
+    fields=$(printf '%s' "$1" | jq -r '[(.main.temp|round), (.main.feels_like|round), .weather[0].description, .weather[0].icon] | @tsv')
+    old_ifs=$IFS
+    IFS='	'
+    set -- $fields
+    IFS=$old_ifs
+    W_TEMP=$1
+    W_FEELS=$2
+    W_DESC=$3
+    W_ICON=$4
+}
+
+# Icons
+get_weather_icon() {
+    case "$1" in
+        01d) printf '' ;;
+        01n) printf '' ;;
+        02d) printf '' ;;
+        02n) printf '' ;;
+        03d|03n) printf '' ;;
+        04d|04n) printf '' ;;
+        09d|09n) printf '' ;;
+        10d) printf '' ;;
+        10n) printf '' ;;
+        11d|11n) printf '' ;;
+        13d|13n) printf '' ;;
+        50d|50n) printf '' ;;
+        *) printf '' ;;
+    esac
+}
+
+get_weather_hex() {
+    case "$1" in
+        01*) printf '#ffd86b' ;;
+        02*|03*|04*) printf '#adadff' ;;
+        09*|10*) printf '#6b95ff' ;;
+        11*) printf '#ffeb57' ;;
+        13*) printf '#e3e6fc' ;;
+        50*) printf '#84afdb' ;;
+        *) printf '#adadff' ;;
+    esac
+}
+
+# Execution
+weather_data=$(get_weather_data) || exit 1
+parse_weather_values "$weather_data"
+
+case "$1" in
+    "current_temp")
+        echo "$W_TEMP"
+        ;;
+    "current_temp_fahrenheit")
+        temp_f=$(printf '%s' "$weather_data" | jq -r '((.main.temp * 9 / 5) + 32) | round')
+        echo "${temp_f}°F"
+        ;;
+    "feels_like")
+        echo "${W_FEELS}°C"
+        ;;
+    "weather_desc")
+        printf '%s\n' "$W_DESC" | awk '{ print toupper(substr($0,1,1)) substr($0,2) }'
+        ;;
+    "icon")
+        get_weather_icon "$W_ICON"
+        ;;
+    "hex")
+        get_weather_hex "$W_ICON"
+        ;;
+    "full")
+        echo "$weather_data"
+        ;;
+    "city")
+        echo "$CITY"
+        ;;
+    "wmodule")
+        icon=$(get_weather_icon "$W_ICON")
+        hex=$(get_weather_hex "$W_ICON")
+        printf "%%{F%s}%s%%{F-} %s°\n" "$hex" "$icon" "$W_TEMP"
+        ;;
+    *)
+        echo "No valid option" >&2
+        exit 1
+        ;;
+esac

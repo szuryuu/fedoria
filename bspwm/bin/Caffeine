@@ -1,0 +1,61 @@
+#!/bin/sh
+# Caffeine - toggle & report sleep/idle inhibitor for polybar
+# Keeps the laptop awake while "on". Uses systemd-inhibit (no extra deps).
+
+arg="${1:-status}"
+STATE="${XDG_RUNTIME_DIR:-$HOME/.cache}/caffeine.pid"
+
+# Pull on/off colors from the active rice's config.ini
+CONFIG_DIR="${HOME}/.config/bspwm"
+read -r rice < "${CONFIG_DIR}/.rice" 2>/dev/null
+config="${CONFIG_DIR}/rices/${rice}/config.ini"
+
+read_colors() {
+    awk 'BEGIN{on=""; off=""}
+        /^green =/{on=$3; if(off!="")exit}
+        /^grey =/{off=$3; if(on!="")exit}
+        END{print on" "off}' "$config" 2>/dev/null
+}
+colors="$(read_colors)"
+ON="${colors%% *}"
+OFF="${colors#* }"
+[ -n "$ON" ] || ON="#9ece6a"
+[ -n "$OFF" ] || OFF="#8C8C8C"
+
+pid() { cat "$STATE" 2>/dev/null; }
+
+is_on() { [ -f "$STATE" ] && kill -0 "$(pid)" 2>/dev/null; }
+
+toggle() {
+    if is_on; then
+        pkill -P "$(pid)" 2>/dev/null   # kill the sleep child first
+        kill "$(pid)" 2>/dev/null       # then the inhibitor
+        rm -f "$STATE"
+        # Restore normal display power saving (screen may blank again)
+        xset +dpms 2>/dev/null
+        xset s on 2>/dev/null
+    else
+        rm -f "$STATE"
+        # Keep the screen on: disable DPMS blanking (the thing that actually
+        # turns the panel black) and the X screensaver.
+        xset -dpms 2>/dev/null
+        xset s off 2>/dev/null
+        # Fully detach: don't let `sleep infinity` inherit polybar's stdout pipe,
+        # which would keep the pipe open and hang/kill the bar.
+        setsid systemd-inhibit --what=sleep:idle --why="Caffeine" sleep infinity \
+            </dev/null >/dev/null 2>&1 &
+        echo $! > "$STATE"
+    fi
+    polybar-msg action caffeine hook 0 >/dev/null 2>&1
+}
+
+case "$arg" in
+    toggle) toggle ;;
+    status)
+        if is_on; then
+            echo "%{F${ON}}󰅶%{F-}"
+        else
+            echo "%{F${OFF}}󰛊%{F-}"
+        fi
+        ;;
+esac

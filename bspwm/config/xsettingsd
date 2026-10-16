@@ -1,0 +1,9 @@
+Net/ThemeName "Adwaita-dark"
+Gtk/ApplicationPreferDarkTheme 1
+Net/IconThemeName "TokyoNight-SE"
+Gtk/CursorThemeName "Qogirr-Dark"
+Gtk/DecorationLayout ":"
+Xft/Hinting 1
+Xft/HintStyle "hintfull"
+Xft/Antialias 1
+Xft/RGBA "none"

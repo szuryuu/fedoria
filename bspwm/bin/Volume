@@ -1,0 +1,81 @@
+#!/bin/sh
+# =============================================================
+# Volume control using pactl (PipeWire/PulseAudio).
+# Interface kept compatible with the original gh0stzk script:
+#   Volume --inc | --dec | --toggle | --get
+# =============================================================
+
+# Icon directory
+vol_dir="$HOME/.config/bspwm/config/assets"
+
+notify() {
+    dunstify -u low -h string:x-dunst-stack-tag:cvolum "$@"
+}
+
+# Get volume as a bare number (0-150) or "muted"
+get_volume() {
+    if [ "$(pactl get-sink-mute @DEFAULT_SINK@ 2>/dev/null)" = "Mute: yes" ]; then
+        echo muted
+        return
+    fi
+    pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null \
+        | awk -F/ '/%/{gsub(/[ %]/,"",$2); print $2; exit}'
+}
+
+# Determine icon based on a volume value (muted|0|N)
+get_icon() {
+    case "$1" in
+        muted|0) icon="$vol_dir/mute.png" ;;
+        *) icon="$vol_dir/vol.png" ;;
+    esac
+}
+
+# Show notification
+show_notification() {
+    local vol
+    vol=$(get_volume)
+    get_icon "$vol"
+
+    if [ "$vol" = "muted" ]; then
+        notify -i "$icon" "Volumen: muted"
+    else
+        notify -i "$icon" "Volumen: ${vol}%"
+    fi
+}
+
+# Adjust volume
+adjust_volume() {
+    pactl set-sink-mute @DEFAULT_SINK@ 0
+    pactl set-sink-volume @DEFAULT_SINK@ "$@"
+    show_notification
+}
+
+# Toggle mute
+toggle_mute() {
+    local vol
+    pactl set-sink-mute @DEFAULT_SINK@ toggle
+
+    if [ "$(pactl get-sink-mute @DEFAULT_SINK@)" = "Mute: yes" ]; then
+        get_icon muted
+        notify -i "$icon" "Muted"
+    else
+        vol=$(get_volume)
+        get_icon "$vol"
+        notify -i "$icon" "Unmuted"
+    fi
+}
+
+# Handle options
+case "$1" in
+    --get)    get_volume ;;
+    --inc)    adjust_volume +5% ;;
+    --dec)    adjust_volume -5% ;;
+    --toggle) toggle_mute ;;
+    *)
+        vol=$(get_volume)
+        case "$vol" in
+            muted) echo muted ;;
+            *) echo "${vol}%" ;;
+        esac
+        ;;
+esac
